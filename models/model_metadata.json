@@ -1,0 +1,42 @@
+{
+  "features": [
+    "elo_diff",
+    "rank_diff",
+    "home_attack_strength",
+    "away_defense_strength",
+    "expected_goals_diff",
+    "home_form",
+    "away_form",
+    "is_neutral"
+  ],
+  "target": "result",
+  "classes": {
+    "0": "Away Win",
+    "1": "Draw",
+    "2": "Home Win"
+  },
+  "best_params": {
+    "colsample_bytree": 0.8,
+    "learning_rate": 0.01,
+    "max_depth": 3,
+    "min_child_weight": 1,
+    "n_estimators": 500,
+    "subsample": 0.8
+  },
+  "metrics": {
+    "test_accuracy": 0.5661,
+    "test_f1_macro": 0.5222,
+    "test_log_loss": 0.8905,
+    "baseline_accuracy": 0.4713
+  },
+  "feature_importance": {
+    "elo_diff": 44.029998779296875,
+    "rank_diff": 20.25,
+    "expected_goals_diff": 10.84000015258789,
+    "is_neutral": 9.920000076293945,
+    "away_defense_strength": 5.070000171661377,
+    "home_attack_strength": 3.859999895095825,
+    "home_form": 3.2200000286102295,
+    "away_form": 2.809999942779541
+  }
+}

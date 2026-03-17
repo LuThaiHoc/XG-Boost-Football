@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XGBoost Football - Future Match Predictor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        nav {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            height: 60px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav .logo { font-size: 1.25rem; font-weight: 700; color: #38bdf8; margin-right: 2rem; }
+        nav a {
+            color: #94a3b8; text-decoration: none; padding: 0.5rem 1rem;
+            border-radius: 6px; font-size: 0.9rem; transition: all 0.2s;
+        }
+        nav a:hover, nav a.active { color: #f1f5f9; background: #334155; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; color: #f1f5f9; }
+        .page-subtitle { font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem; }
+
+        /* TEAM SELECTOR */
+        .selector-panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .selector-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 1.5rem;
+            align-items: end;
+        }
+        .team-picker { display: flex; flex-direction: column; gap: 0.4rem; }
+        .team-picker label {
+            font-size: 0.75rem; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .team-picker select {
+            background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+            padding: 0.75rem 1rem; border-radius: 10px; font-size: 1rem; outline: none;
+            width: 100%;
+        }
+        .team-picker select:focus { border-color: #38bdf8; }
+        .vs-badge {
+            font-size: 1.5rem; font-weight: 800; color: #334155;
+            align-self: center; padding-top: 1.25rem;
+        }
+        .selector-options {
+            display: flex; gap: 1.5rem; align-items: center;
+            margin-top: 1.25rem; padding-top: 1.25rem;
+            border-top: 1px solid #334155;
+        }
+        .toggle-group { display: flex; align-items: center; gap: 0.5rem; }
+        .toggle-group label { font-size: 0.85rem; color: #94a3b8; }
+        .toggle {
+            position: relative; width: 44px; height: 24px;
+            background: #334155; border-radius: 12px; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .toggle.active { background: #38bdf8; }
+        .toggle::after {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            background: #f1f5f9; border-radius: 50%;
+            top: 3px; left: 3px; transition: transform 0.2s;
+        }
+        .toggle.active::after { transform: translateX(20px); }
+        .btn-predict {
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            color: #0f172a; border: none; padding: 0.75rem 2.5rem;
+            border-radius: 10px; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; margin-left: auto;
+        }
+        .btn-predict:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(56,189,248,0.3); }
+        .btn-predict:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-swap {
+            background: none; border: 1px solid #334155; color: #94a3b8;
+            padding: 0.5rem; border-radius: 8px; cursor: pointer; font-size: 1rem;
+            transition: all 0.15s;
+        }
+        .btn-swap:hover { border-color: #38bdf8; color: #38bdf8; }
+
+        /* RESULT AREA */
+        .result-area { display: none; }
+        .result-area.active { display: block; }
+
+        /* PREDICTION HERO */
+        .pred-hero {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .pred-hero .matchup {
+            display: flex; justify-content: center; align-items: center; gap: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .pred-hero .team-name {
+            font-size: 1.8rem; font-weight: 800; color: #f1f5f9;
+        }
+        .pred-hero .team-meta {
+            font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;
+        }
+        .pred-hero .vs { font-size: 1.2rem; color: #334155; font-weight: 800; }
+
+        /* PROB GAUGE */
+        .prob-gauge {
+            display: flex; height: 48px; border-radius: 12px; overflow: hidden;
+            margin: 1.5rem 0; border: 1px solid #334155;
+        }
+        .gauge-home {
+            background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1rem; color: #0f172a;
+            transition: width 0.6s ease;
+        }
+        .gauge-draw {
+            background: linear-gradient(90deg, #d97706, #facc15);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.85rem; color: #0f172a;
+            transition: width 0.6s ease;
+        }
+        .gauge-away {
+            background: linear-gradient(90deg, #ef4444, #f87171);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1rem; color: #fff;
+            transition: width 0.6s ease;
+        }
+        .prob-legend {
+            display: flex; justify-content: space-between; font-size: 0.8rem; color: #94a3b8;
+        }
+        .pred-verdict {
+            font-size: 1.1rem; font-weight: 700; color: #4ade80;
+            margin-top: 1rem;
+        }
+
+        /* DETAILS GRID */
+        .details-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .card {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 12px; padding: 1.5rem;
+        }
+        .card-title {
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;
+            color: #64748b; margin-bottom: 1rem;
+        }
+
+        /* COMPARE TABLE */
+        .compare-table { width: 100%; border-collapse: collapse; }
+        .compare-table th {
+            font-size: 0.75rem; color: #64748b; text-transform: uppercase;
+            letter-spacing: 0.05em; padding: 0.5rem 0; text-align: center;
+        }
+        .compare-table th:first-child { text-align: left; }
+        .compare-table td { padding: 0.6rem 0; text-align: center; font-size: 0.9rem; }
+        .compare-table td:first-child {
+            text-align: left; color: #94a3b8; font-size: 0.85rem;
+        }
+        .compare-table tr { border-bottom: 1px solid #1e3a5f; }
+        .val-better { color: #4ade80; font-weight: 700; }
+        .val-worse { color: #94a3b8; }
+        .val-neutral { color: #e2e8f0; }
+
+        /* H2H LIST */
+        .h2h-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .h2h-row {
+            display: grid; grid-template-columns: 80px 1fr 60px 1fr 120px;
+            align-items: center; gap: 0.5rem;
+            padding: 0.5rem 0.75rem; border-radius: 8px; background: #0f172a;
+            font-size: 0.85rem;
+        }
+        .h2h-date { color: #64748b; font-size: 0.8rem; }
+        .h2h-team { font-weight: 600; }
+        .h2h-team.right { text-align: right; }
+        .h2h-score { text-align: center; font-weight: 800; font-size: 1rem; color: #f1f5f9; }
+        .h2h-tournament { font-size: 0.7rem; color: #64748b; text-align: right; }
+        .h2h-empty { text-align: center; color: #64748b; padding: 1.5rem; font-size: 0.85rem; }
+
+        /* CHART */
+        .chart-container { position: relative; height: 220px; }
+
+        /* RECENT FORM */
+        .form-dots { display: flex; gap: 0.3rem; margin-top: 0.25rem; }
+        .form-dot {
+            width: 28px; height: 28px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 700;
+        }
+        .form-dot.W { background: rgba(74,222,128,0.2); color: #4ade80; }
+        .form-dot.D { background: rgba(250,204,21,0.2); color: #facc15; }
+        .form-dot.L { background: rgba(248,113,113,0.2); color: #f87171; }
+
+        @media (max-width: 800px) {
+            .selector-grid { grid-template-columns: 1fr; }
+            .vs-badge { display: none; }
+            .details-grid { grid-template-columns: 1fr; }
+            .pred-hero .matchup { flex-direction: column; gap: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo">XG-Boost Football</div>
+        <a href="/">Dashboard</a>
+        <a href="/predictor">Match Predictor</a>
+        <a href="/future" class="active">Future Predictor</a>
+    </nav>
+
+    <div class="container">
+        <h1 class="page-title">Future Match Predictor</h1>
+        <p class="page-subtitle">Select any two teams to predict the outcome of a future match using XGBoost model</p>
+
+        <!-- TEAM SELECTOR -->
+        <div class="selector-panel">
+            <div class="selector-grid">
+                <div class="team-picker">
+                    <label>Home Team</label>
+                    <select id="home-team"></select>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:0.5rem;">
+                    <div class="vs-badge">VS</div>
+                    <button class="btn-swap" onclick="swapTeams()" title="Swap teams">&#8644;</button>
+                </div>
+                <div class="team-picker">
+                    <label>Away Team</label>
+                    <select id="away-team"></select>
+                </div>
+            </div>
+            <div class="selector-options">
+                <div class="toggle-group">
+                    <div class="toggle active" id="neutral-toggle" onclick="toggleNeutral()"></div>
+                    <label>Neutral venue</label>
+                </div>
+                <button class="btn-predict" id="btn-predict" onclick="predict()">Predict Match</button>
+            </div>
+        </div>
+
+        <!-- RESULT AREA -->
+        <div class="result-area" id="result-area">
+            <!-- HERO -->
+            <div class="pred-hero" id="pred-hero"></div>
+
+            <!-- DETAILS -->
+            <div class="details-grid">
+                <!-- Team Comparison -->
+                <div class="card">
+                    <div class="card-title">Team Comparison</div>
+                    <table class="compare-table" id="compare-table"></table>
+                </div>
+
+                <!-- Donut Chart -->
+                <div class="card">
+                    <div class="card-title">Win Probability</div>
+                    <div class="chart-container">
+                        <canvas id="probChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="details-grid">
+                <!-- Head-to-Head -->
+                <div class="card">
+                    <div class="card-title">Head-to-Head History (last 10)</div>
+                    <div id="h2h-section"></div>
+                </div>
+
+                <!-- Recent Form -->
+                <div class="card">
+                    <div class="card-title">Recent Form (last 10 matches)</div>
+                    <div id="form-section"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isNeutral = true;
+        let probChart = null;
+
+        // ---- Init ----
+        async function init() {
+            const teams = await fetch('/api/teams').then(r => r.json());
+            const homeSelect = document.getElementById('home-team');
+            const awaySelect = document.getElementById('away-team');
+            teams.forEach(t => {
+                homeSelect.innerHTML += `<option value="${t}">${t}</option>`;
+                awaySelect.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+            // Defaults
+            homeSelect.value = 'Argentina';
+            awaySelect.value = 'France';
+        }
+
+        function swapTeams() {
+            const h = document.getElementById('home-team');
+            const a = document.getElementById('away-team');
+            [h.value, a.value] = [a.value, h.value];
+        }
+
+        function toggleNeutral() {
+            isNeutral = !isNeutral;
+            document.getElementById('neutral-toggle').classList.toggle('active', isNeutral);
+        }
+
+        // ---- Predict ----
+        async function predict() {
+            const home = document.getElementById('home-team').value;
+            const away = document.getElementById('away-team').value;
+            if (home === away) { alert('Please select different teams'); return; }
+
+            const btn = document.getElementById('btn-predict');
+            btn.disabled = true; btn.textContent = 'Predicting...';
+
+            const [predData, homeProfile, awayProfile] = await Promise.all([
+                fetch(`/api/predict-future?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}&neutral=${isNeutral?1:0}`).then(r=>r.json()),
+                fetch(`/api/team-profile?team=${encodeURIComponent(home)}`).then(r=>r.json()),
+                fetch(`/api/team-profile?team=${encodeURIComponent(away)}`).then(r=>r.json()),
+            ]);
+
+            btn.disabled = false; btn.textContent = 'Predict Match';
+
+            renderHero(predData);
+            renderComparison(predData, homeProfile, awayProfile);
+            renderDonut(predData);
+            renderH2H(predData);
+            renderForm(homeProfile, awayProfile);
+
+            document.getElementById('result-area').classList.add('active');
+            document.getElementById('pred-hero').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // ---- Render Hero ----
+        function renderHero(d) {
+            const ph = d.pred_home_win, pd_ = d.pred_draw, pa = d.pred_away_win;
+            const e = d.extra;
+            document.getElementById('pred-hero').innerHTML = `
+                <div class="matchup">
+                    <div>
+                        <div class="team-name">${d.home_team}</div>
+                        <div class="team-meta">Elo ${e.home_elo} | Rank #${e.home_rank}</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div>
+                        <div class="team-name">${d.away_team}</div>
+                        <div class="team-meta">Elo ${e.away_elo} | Rank #${e.away_rank}</div>
+                    </div>
+                </div>
+
+                <div class="prob-gauge">
+                    <div class="gauge-home" style="width:${ph*100}%">${ph>=0.08?(ph*100).toFixed(1)+'%':''}</div>
+                    <div class="gauge-draw" style="width:${pd_*100}%">${pd_>=0.08?(pd_*100).toFixed(1)+'%':''}</div>
+                    <div class="gauge-away" style="width:${pa*100}%">${pa>=0.08?(pa*100).toFixed(1)+'%':''}</div>
+                </div>
+                <div class="prob-legend">
+                    <span>${d.home_team} Win</span>
+                    <span>Draw</span>
+                    <span>${d.away_team} Win</span>
+                </div>
+
+                <div class="pred-verdict">
+                    Prediction: ${d.predicted_label}
+                    ${d.is_neutral ? ' (Neutral Venue)' : ' (Home Advantage)'}
+                </div>
+            `;
+        }
+
+        // ---- Comparison Table ----
+        function renderComparison(d, hp, ap) {
+            const e = d.extra;
+            const f = d.features;
+            const rows = [
+                { label: 'Elo Rating', home: e.home_elo, away: e.away_elo, higher: true },
+                { label: 'FIFA Rank', home: `#${e.home_rank}`, away: `#${e.away_rank}`, higher: false, raw_h: e.home_rank, raw_a: e.away_rank },
+                { label: 'Attack Strength', home: e.home_attack_strength, away: e.away_attack_strength, higher: true },
+                { label: 'Defense Strength', home: e.home_defense_strength, away: e.away_defense_strength, higher: false },
+                { label: 'Expected Goals', home: e.xg_home, away: e.xg_away, higher: true },
+                { label: 'Form (5 games)', home: (e.home_form*100).toFixed(0)+'%', away: (e.away_form*100).toFixed(0)+'%', higher: true, raw_h: e.home_form, raw_a: e.away_form },
+                { label: 'Total Matches', home: hp.total_matches, away: ap.total_matches, higher: null },
+            ];
+
+            let html = `<tr><th>Stat</th><th>${d.home_team}</th><th>${d.away_team}</th></tr>`;
+            rows.forEach(r => {
+                let hCls = 'val-neutral', aCls = 'val-neutral';
+                const hv = r.raw_h !== undefined ? r.raw_h : (typeof r.home === 'number' ? r.home : 0);
+                const av = r.raw_a !== undefined ? r.raw_a : (typeof r.away === 'number' ? r.away : 0);
+                if (r.higher !== null) {
+                    if (r.higher) {
+                        hCls = hv > av ? 'val-better' : (hv < av ? 'val-worse' : 'val-neutral');
+                        aCls = av > hv ? 'val-better' : (av < hv ? 'val-worse' : 'val-neutral');
+                    } else {
+                        hCls = hv < av ? 'val-better' : (hv > av ? 'val-worse' : 'val-neutral');
+                        aCls = av < hv ? 'val-better' : (av > hv ? 'val-worse' : 'val-neutral');
+                    }
+                }
+                html += `<tr>
+                    <td>${r.label}</td>
+                    <td class="${hCls}">${r.home}</td>
+                    <td class="${aCls}">${r.away}</td>
+                </tr>`;
+            });
+            document.getElementById('compare-table').innerHTML = html;
+        }
+
+        // ---- Donut Chart ----
+        function renderDonut(d) {
+            if (probChart) probChart.destroy();
+            probChart = new Chart(document.getElementById('probChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: [`${d.home_team} Win`, 'Draw', `${d.away_team} Win`],
+                    datasets: [{
+                        data: [d.pred_home_win, d.pred_draw, d.pred_away_win],
+                        backgroundColor: ['#0ea5e9', '#eab308', '#ef4444'],
+                        borderColor: '#1e293b', borderWidth: 3,
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '55%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 12 } },
+                        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${(ctx.raw*100).toFixed(1)}%` } },
+                    },
+                },
+            });
+        }
+
+        // ---- H2H ----
+        function renderH2H(d) {
+            const section = document.getElementById('h2h-section');
+            if (!d.h2h_history || d.h2h_history.length === 0) {
+                section.innerHTML = '<div class="h2h-empty">No head-to-head history found</div>';
+                return;
+            }
+            section.innerHTML = '<div class="h2h-list">' + d.h2h_history.map(m => `
+                <div class="h2h-row">
+                    <div class="h2h-date">${m.date}</div>
+                    <div class="h2h-team right">${m.home_team}</div>
+                    <div class="h2h-score">${m.home_score} - ${m.away_score}</div>
+                    <div class="h2h-team">${m.away_team}</div>
+                    <div class="h2h-tournament">${m.tournament}</div>
+                </div>
+            `).join('') + '</div>';
+        }
+
+        // ---- Recent Form ----
+        function renderForm(hp, ap) {
+            function renderTeamForm(profile) {
+                if (!profile.recent || profile.recent.length === 0) return '<div class="h2h-empty">No data</div>';
+                const dots = profile.recent.slice(0, 10).map(m =>
+                    `<div class="form-dot ${m.result}" title="${m.date}: ${m.result} vs ${m.opponent} (${m.goals_for}-${m.goals_against})">${m.result}</div>`
+                ).join('');
+
+                const matches = profile.recent.slice(0, 5).map(m =>
+                    `<div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.3rem 0;border-bottom:1px solid #1e3a5f;">
+                        <span style="color:#64748b">${m.date}</span>
+                        <span style="color:#e2e8f0">${m.venue === 'Home' ? '<strong>'+profile.team+'</strong>' : m.opponent} ${m.goals_for}-${m.goals_against} ${m.venue === 'Away' ? '<strong>'+profile.team+'</strong>' : m.opponent}</span>
+                        <span class="form-dot ${m.result}" style="width:22px;height:22px;font-size:0.65rem;">${m.result}</span>
+                    </div>`
+                ).join('');
+
+                return `
+                    <div style="margin-bottom:1.25rem;">
+                        <div style="font-weight:700;color:#f1f5f9;margin-bottom:0.3rem;">${profile.team}</div>
+                        <div class="form-dots">${dots}</div>
+                    </div>
+                    ${matches}
+                `;
+            }
+
+            document.getElementById('form-section').innerHTML =
+                renderTeamForm(hp) +
+                '<div style="height:1.5rem;border-top:1px solid #334155;margin-top:1rem;padding-top:1rem;"></div>' +
+                renderTeamForm(ap);
+        }
+
+        init();
+    </script>
+</body>
+</html>

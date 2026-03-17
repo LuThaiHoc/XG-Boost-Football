@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XGBoost Football - Match Predictor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        /* NAV */
+        nav {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            height: 60px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-right: 2rem;
+        }
+        nav a {
+            color: #94a3b8;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        nav a:hover, nav a.active {
+            color: #f1f5f9;
+            background: #334155;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #f1f5f9;
+        }
+
+        /* FILTERS */
+        .filters {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            gap: 1rem;
+            align-items: end;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .filter-group label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        select, input[type="text"] {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 0.6rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            min-width: 180px;
+            outline: none;
+        }
+        select:focus, input:focus {
+            border-color: #38bdf8;
+        }
+        .btn {
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #7dd3fc; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #334155;
+            color: #94a3b8;
+        }
+        .btn-outline:hover {
+            border-color: #38bdf8;
+            color: #38bdf8;
+            background: transparent;
+        }
+
+        /* MATCH LIST */
+        .match-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .match-row {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            display: grid;
+            grid-template-columns: 100px 1fr 120px 1fr 200px 80px;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .match-row:hover {
+            border-color: #38bdf8;
+            background: #1e3a5f;
+        }
+        .match-row.selected {
+            border-color: #38bdf8;
+            background: #1e3a5f;
+            box-shadow: 0 0 0 1px #38bdf8;
+        }
+        .match-date {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+        .match-team {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .match-team.home { text-align: right; }
+        .match-team.away { text-align: left; }
+        .match-score {
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #f1f5f9;
+            letter-spacing: 0.1em;
+        }
+        .match-tournament {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-align: center;
+        }
+        .match-badge {
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+        }
+        .badge-correct {
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+        }
+        .badge-wrong {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+        }
+
+        /* PREDICTION PANEL */
+        .prediction-panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            display: none;
+        }
+        .prediction-panel.active { display: block; }
+
+        .pred-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .pred-header .teams {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #f1f5f9;
+        }
+        .pred-header .vs { color: #64748b; margin: 0 0.5rem; }
+        .pred-header .meta {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 0.3rem;
+        }
+
+        .pred-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* PROBABILITY BAR */
+        .prob-section { }
+        .prob-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .prob-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .prob-label-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+        }
+        .prob-label { color: #94a3b8; }
+        .prob-value { font-weight: 700; }
+        .prob-bar-bg {
+            height: 28px;
+            background: #0f172a;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .prob-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            padding-left: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .bar-home { background: linear-gradient(90deg, #38bdf8, #0ea5e9); }
+        .bar-draw { background: linear-gradient(90deg, #facc15, #eab308); color: #0f172a; }
+        .bar-away { background: linear-gradient(90deg, #f87171, #ef4444); }
+
+        /* ACTUAL vs PREDICTED */
+        .result-compare {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+        .result-box {
+            text-align: center;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            min-width: 160px;
+        }
+        .result-box.actual {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+        .result-box.predicted {
+            background: rgba(251, 146, 60, 0.1);
+            border: 1px solid rgba(251, 146, 60, 0.3);
+        }
+        .result-box .rb-label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 0.3rem;
+        }
+        .result-box .rb-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .result-box.actual .rb-value { color: #38bdf8; }
+        .result-box.predicted .rb-value { color: #fb923c; }
+        .result-verdict {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .verdict-correct { color: #4ade80; }
+        .verdict-wrong { color: #f87171; }
+
+        /* FEATURES TABLE */
+        .features-section h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+        .feat-table {
+            width: 100%;
+            font-size: 0.85rem;
+        }
+        .feat-table tr {
+            border-bottom: 1px solid #1e293b;
+        }
+        .feat-table td {
+            padding: 0.5rem 0;
+        }
+        .feat-table td:first-child {
+            color: #94a3b8;
+        }
+        .feat-table td:last-child {
+            text-align: right;
+            font-weight: 600;
+            color: #38bdf8;
+        }
+
+        /* CHART */
+        .pred-chart-container {
+            position: relative;
+            height: 200px;
+            margin-top: 1rem;
+        }
+
+        .no-results {
+            text-align: center;
+            color: #64748b;
+            padding: 3rem;
+            font-size: 0.9rem;
+        }
+        .match-count {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        @media (max-width: 1000px) {
+            .match-row {
+                grid-template-columns: 80px 1fr 80px 1fr auto;
+            }
+            .match-tournament { display: none; }
+            .pred-body { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo">XG-Boost Football</div>
+        <a href="/">Dashboard</a>
+        <a href="/predictor" class="active">Match Predictor</a>
+        <a href="/future">Future Predictor</a>
+    </nav>
+
+    <div class="container">
+        <h1 class="page-title">Match Predictor</h1>
+
+        <!-- FILTERS -->
+        <div class="filters">
+            <div class="filter-group">
+                <label>Home Team</label>
+                <select id="filter-home"><option value="">All Teams</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Away Team</label>
+                <select id="filter-away"><option value="">All Teams</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Tournament</label>
+                <select id="filter-tournament"><option value="">All Tournaments</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Year</label>
+                <select id="filter-year"><option value="">All Years</option></select>
+            </div>
+            <button class="btn" onclick="searchMatches()">Search</button>
+            <button class="btn btn-outline" onclick="resetFilters()">Reset</button>
+        </div>
+
+        <!-- MATCH COUNT -->
+        <div class="match-count" id="match-count"></div>
+
+        <!-- MATCH LIST -->
+        <div class="match-list" id="match-list">
+            <div class="no-results">Select filters and click Search to find matches</div>
+        </div>
+
+        <!-- PREDICTION PANEL -->
+        <div class="prediction-panel" id="prediction-panel">
+            <div class="pred-header">
+                <div class="teams">
+                    <span id="pred-home"></span>
+                    <span class="vs">vs</span>
+                    <span id="pred-away"></span>
+                </div>
+                <div class="meta" id="pred-meta"></div>
+            </div>
+
+            <div class="pred-body">
+                <!-- LEFT: Probabilities -->
+                <div class="prob-section">
+                    <div style="font-size:0.85rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">
+                        XGBoost Prediction
+                    </div>
+                    <div class="prob-bars" id="prob-bars"></div>
+
+                    <div class="pred-chart-container">
+                        <canvas id="probChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- RIGHT: Features + Result -->
+                <div class="features-section">
+                    <h3>Input Features</h3>
+                    <table class="feat-table" id="feat-table"></table>
+
+                    <div class="result-compare" id="result-compare"></div>
+                    <div class="result-verdict" id="result-verdict"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const RESULT_MAP = { 0: 'Away Win', 1: 'Draw', 2: 'Home Win' };
+        const FEAT_LABELS = {
+            'elo_diff': 'Elo Difference',
+            'rank_diff': 'FIFA Rank Diff',
+            'home_attack_strength': 'Home Attack Str.',
+            'away_defense_strength': 'Away Defense Str.',
+            'expected_goals_diff': 'Expected Goals Diff',
+            'home_form': 'Home Form (5 games)',
+            'away_form': 'Away Form (5 games)',
+            'is_neutral': 'Neutral Venue',
+        };
+        let currentMatches = [];
+        let probChartInstance = null;
+
+        // ---- Init ----
+        async function init() {
+            const [teams, tournaments, years] = await Promise.all([
+                fetch('/api/teams').then(r => r.json()),
+                fetch('/api/tournaments').then(r => r.json()),
+                fetch('/api/years').then(r => r.json()),
+            ]);
+
+            const homeSelect = document.getElementById('filter-home');
+            const awaySelect = document.getElementById('filter-away');
+            teams.forEach(t => {
+                homeSelect.innerHTML += `<option value="${t}">${t}</option>`;
+                awaySelect.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+
+            const tourSelect = document.getElementById('filter-tournament');
+            tournaments.forEach(t => {
+                tourSelect.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+
+            const yearSelect = document.getElementById('filter-year');
+            years.forEach(y => {
+                yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+            });
+
+            // Default: load World Cup matches
+            document.getElementById('filter-tournament').value = 'FIFA World Cup';
+            searchMatches();
+        }
+
+        // ---- Search ----
+        async function searchMatches() {
+            const home = document.getElementById('filter-home').value;
+            const away = document.getElementById('filter-away').value;
+            const tournament = document.getElementById('filter-tournament').value;
+            const year = document.getElementById('filter-year').value;
+
+            const params = new URLSearchParams();
+            if (home) params.set('home', home);
+            if (away) params.set('away', away);
+            if (tournament) params.set('tournament', tournament);
+            if (year) params.set('year', year);
+
+            const matches = await fetch(`/api/matches?${params}`).then(r => r.json());
+            currentMatches = matches;
+            renderMatches(matches);
+        }
+
+        function resetFilters() {
+            document.getElementById('filter-home').value = '';
+            document.getElementById('filter-away').value = '';
+            document.getElementById('filter-tournament').value = '';
+            document.getElementById('filter-year').value = '';
+            document.getElementById('match-list').innerHTML = '<div class="no-results">Select filters and click Search</div>';
+            document.getElementById('match-count').textContent = '';
+            document.getElementById('prediction-panel').classList.remove('active');
+        }
+
+        // ---- Render Matches ----
+        function renderMatches(matches) {
+            const list = document.getElementById('match-list');
+            document.getElementById('match-count').textContent = `${matches.length} match${matches.length !== 1 ? 'es' : ''} found`;
+
+            if (matches.length === 0) {
+                list.innerHTML = '<div class="no-results">No matches found. Try different filters.</div>';
+                return;
+            }
+
+            list.innerHTML = matches.map((m, i) => `
+                <div class="match-row" data-idx="${i}" onclick="selectMatch(${i})">
+                    <div class="match-date">${m.date}</div>
+                    <div class="match-team home">${m.home_team}</div>
+                    <div class="match-score">${m.home_score} - ${m.away_score}</div>
+                    <div class="match-team away">${m.away_team}</div>
+                    <div class="match-tournament">${m.tournament}</div>
+                    <div class="match-badge ${m.correct ? 'badge-correct' : 'badge-wrong'}">
+                        ${m.correct ? 'Correct' : 'Wrong'}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ---- Select Match ----
+        async function selectMatch(idx) {
+            const m = currentMatches[idx];
+
+            // Highlight selected
+            document.querySelectorAll('.match-row').forEach(r => r.classList.remove('selected'));
+            document.querySelector(`.match-row[data-idx="${idx}"]`).classList.add('selected');
+
+            // Show panel
+            const panel = document.getElementById('prediction-panel');
+            panel.classList.add('active');
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Header
+            document.getElementById('pred-home').textContent = m.home_team;
+            document.getElementById('pred-away').textContent = m.away_team;
+            document.getElementById('pred-meta').textContent = `${m.date} | ${m.tournament}`;
+
+            // Probability bars
+            const probs = [
+                { label: `${m.home_team} Win`, value: m.pred_home_win, cls: 'bar-home' },
+                { label: 'Draw', value: m.pred_draw, cls: 'bar-draw' },
+                { label: `${m.away_team} Win`, value: m.pred_away_win, cls: 'bar-away' },
+            ];
+
+            document.getElementById('prob-bars').innerHTML = probs.map(p => `
+                <div class="prob-item">
+                    <div class="prob-label-row">
+                        <span class="prob-label">${p.label}</span>
+                        <span class="prob-value">${(p.value * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="prob-bar-bg">
+                        <div class="prob-bar-fill ${p.cls}" style="width:${Math.max(p.value * 100, 2)}%"></div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Doughnut Chart
+            if (probChartInstance) probChartInstance.destroy();
+            probChartInstance = new Chart(document.getElementById('probChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: [`${m.home_team} Win`, 'Draw', `${m.away_team} Win`],
+                    datasets: [{
+                        data: [m.pred_home_win, m.pred_draw, m.pred_away_win],
+                        backgroundColor: ['#0ea5e9', '#eab308', '#ef4444'],
+                        borderColor: '#1e293b',
+                        borderWidth: 3,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#94a3b8', font: { size: 11 }, padding: 12 },
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.label}: ${(ctx.raw * 100).toFixed(1)}%`,
+                            }
+                        }
+                    },
+                },
+            });
+
+            // Features table
+            // We need to fetch features from API
+            // Use matches API data for features — need to get from full match data
+            // Let's use a simple approach: fetch from the matches endpoint with specific filters
+            const matchData = await fetch(`/api/matches?home=${encodeURIComponent(m.home_team)}&away=${encodeURIComponent(m.away_team)}&year=${m.date.split('-')[0]}`).then(r => r.json());
+
+            // For features, we need to call predict-match API
+            // Find the match index in full dataset
+            const response = await fetch(`/api/matches?home=${encodeURIComponent(m.home_team)}&away=${encodeURIComponent(m.away_team)}`).then(r => r.json());
+
+            // Build features table from available probability data
+            // Actually let's get the features from a dedicated endpoint
+            const featResponse = await fetch(`/api/match-features?home=${encodeURIComponent(m.home_team)}&away=${encodeURIComponent(m.away_team)}&date=${m.date}`).then(r => r.json());
+
+            if (featResponse && featResponse.features) {
+                const feats = featResponse.features;
+                document.getElementById('feat-table').innerHTML = Object.entries(FEAT_LABELS).map(([key, label]) => {
+                    let val = feats[key];
+                    let display = typeof val === 'number' ? val.toFixed(4) : val;
+                    // Color coding
+                    let color = '#38bdf8';
+                    if (key === 'is_neutral') display = val == 1 ? 'Yes' : 'No';
+                    return `<tr><td>${label}</td><td style="color:${color}">${display}</td></tr>`;
+                }).join('');
+            }
+
+            // Actual vs Predicted
+            const actualLabel = RESULT_MAP[m.result];
+            const predLabel = RESULT_MAP[m.pred_label];
+            const isCorrect = m.correct;
+            const actualScore = `${m.home_score} - ${m.away_score}`;
+
+            document.getElementById('result-compare').innerHTML = `
+                <div class="result-box actual">
+                    <div class="rb-label">Actual Result</div>
+                    <div class="rb-value">${actualLabel}</div>
+                    <div style="font-size:1.5rem;font-weight:800;margin-top:0.3rem;">${actualScore}</div>
+                </div>
+                <div class="result-box predicted">
+                    <div class="rb-label">Model Prediction</div>
+                    <div class="rb-value">${predLabel}</div>
+                    <div style="font-size:0.8rem;color:#94a3b8;margin-top:0.5rem;">
+                        Confidence: ${(Math.max(m.pred_home_win, m.pred_draw, m.pred_away_win) * 100).toFixed(1)}%
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('result-verdict').innerHTML = isCorrect
+                ? '<span class="verdict-correct">&#10003; Model predicted correctly!</span>'
+                : '<span class="verdict-wrong">&#10007; Model prediction was wrong</span>';
+        }
+
+        init();
+    </script>
+</body>
+</html>

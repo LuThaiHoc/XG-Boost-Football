@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XGBoost Football Analysis - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        /* NAV */
+        nav {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            height: 60px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-right: 2rem;
+        }
+        nav a {
+            color: #94a3b8;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        nav a:hover, nav a.active {
+            color: #f1f5f9;
+            background: #334155;
+        }
+
+        /* LAYOUT */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #f1f5f9;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1.5rem;
+        }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* CARDS */
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        .card-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin-bottom: 1rem;
+        }
+
+        /* STAT CARDS */
+        .stat-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #38bdf8;
+        }
+        .stat-value.green { color: #4ade80; }
+        .stat-value.yellow { color: #facc15; }
+        .stat-value.purple { color: #a78bfa; }
+        .stat-label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-top: 0.25rem;
+        }
+
+        /* CONFUSION MATRIX */
+        .cm-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+        }
+        .cm-table th, .cm-table td {
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+        .cm-table th {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .cm-table td {
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .cm-cell {
+            transition: transform 0.15s;
+        }
+        .cm-cell:hover {
+            transform: scale(1.05);
+        }
+
+        /* CHART CONTAINER */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+        }
+        .chart-container.tall {
+            height: 350px;
+        }
+
+        /* PARAMS TABLE */
+        .params-table {
+            width: 100%;
+            font-size: 0.85rem;
+        }
+        .params-table tr {
+            border-bottom: 1px solid #334155;
+        }
+        .params-table td {
+            padding: 0.5rem 0;
+        }
+        .params-table td:first-child {
+            color: #94a3b8;
+            width: 50%;
+        }
+        .params-table td:last-child {
+            color: #38bdf8;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        /* MODAL OVERLAY */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 640px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+            animation: modalIn 0.2s ease;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-close {
+            float: right;
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 0.25rem;
+            line-height: 1;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .modal-close:hover {
+            color: #f1f5f9;
+            background: #334155;
+        }
+        .modal-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            margin-bottom: 0.75rem;
+        }
+        .modal h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 0.25rem;
+        }
+        .modal-importance {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 1.25rem;
+        }
+        .modal-section {
+            margin-bottom: 1.25rem;
+        }
+        .modal-section h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+        .modal-section p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #cbd5e1;
+        }
+        .modal-formula {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            margin: 0.5rem 0;
+            overflow-x: auto;
+        }
+        .modal-example {
+            background: #0f172a;
+            border-left: 3px solid #4ade80;
+            border-radius: 0 8px 8px 0;
+            padding: 0.75rem 1rem;
+            margin: 0.5rem 0;
+        }
+        .modal-example .ex-title {
+            font-size: 0.75rem;
+            color: #4ade80;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+        .modal-example .ex-body {
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+        .modal-example .ex-body strong {
+            color: #38bdf8;
+        }
+        .modal-range {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        .modal-range .range-item {
+            font-size: 0.8rem;
+        }
+        .modal-range .range-label {
+            color: #64748b;
+        }
+        .modal-range .range-value {
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+
+        /* Click hint on chart */
+        .click-hint {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-align: center;
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 900px) {
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+            .grid-4 { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Feature Explanation Modal -->
+    <div class="modal-overlay" id="feature-modal" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+    <nav>
+        <div class="logo">XG-Boost Football</div>
+        <a href="/" class="active">Dashboard</a>
+        <a href="/predictor">Match Predictor</a>
+        <a href="/future">Future Predictor</a>
+    </nav>
+
+    <div class="container">
+        <h1 class="page-title">Model Performance Dashboard</h1>
+
+        <!-- STAT CARDS -->
+        <div class="grid-4" id="stat-cards"></div>
+
+        <!-- CHARTS ROW 1 -->
+        <div class="grid-2">
+            <!-- Feature Importance -->
+            <div class="card">
+                <div class="card-title">Feature Importance</div>
+                <div class="chart-container tall">
+                    <canvas id="featureChart"></canvas>
+                </div>
+                <div class="click-hint">Click on a bar to see detailed explanation</div>
+            </div>
+
+            <!-- Confusion Matrix -->
+            <div class="card">
+                <div class="card-title">Confusion Matrix (Test Set)</div>
+                <div id="confusion-matrix"></div>
+            </div>
+        </div>
+
+        <div style="height: 1.5rem;"></div>
+
+        <!-- CHARTS ROW 2 -->
+        <div class="grid-3">
+            <!-- Result Distribution -->
+            <div class="card">
+                <div class="card-title">Result Distribution: Actual vs Predicted</div>
+                <div class="chart-container">
+                    <canvas id="distChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Probability Calibration -->
+            <div class="card">
+                <div class="card-title">Probability Calibration (Home Win)</div>
+                <div class="chart-container">
+                    <canvas id="calibChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Model Parameters -->
+            <div class="card">
+                <div class="card-title">Model Parameters</div>
+                <table class="params-table" id="params-table"></table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            blue: '#38bdf8',
+            green: '#4ade80',
+            yellow: '#facc15',
+            red: '#f87171',
+            purple: '#a78bfa',
+            orange: '#fb923c',
+            cyan: '#22d3ee',
+            pink: '#f472b6',
+            slate: '#64748b',
+        };
+
+        // ---- Feature Explanation Data ----
+        const FEATURE_EXPLANATIONS = {
+            'elo_diff': {
+                name: 'Elo Difference',
+                group: 'Elo Rating',
+                groupColor: '#38bdf8',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv',
+                description: 'Ch\u00eanh l\u1ec7ch \u0111i\u1ec3m Elo gi\u1eefa \u0111\u1ed9i nh\u00e0 v\u00e0 \u0111\u1ed9i kh\u00e1ch. Elo \u0111o l\u01b0\u1eddng s\u1ee9c m\u1ea1nh t\u1ed5ng th\u1ec3 c\u1ee7a \u0111\u1ed9i tuy\u1ec3n d\u1ef1a tr\u00ean to\u00e0n b\u1ed9 l\u1ecbch s\u1eed thi \u0111\u1ea5u. \u0110\u00e2y l\u00e0 feature quan tr\u1ecdng nh\u1ea5t, chi\u1ebfm ~44% t\u1ea7m \u1ea3nh h\u01b0\u1edfng c\u1ee7a model.',
+                formula: 'elo_diff = elo_home - elo_away',
+                calculation: 'Elo b\u1eaft \u0111\u1ea7u = 1500 cho m\u1ecdi \u0111\u1ed9i. Sau m\u1ed7i tr\u1eadn:\n\nExpected = 1 / (1 + 10^((Elo_away - Elo_home_adj) / 400))\nElo_new = Elo_old + K \u00d7 GD_mult \u00d7 (Actual - Expected)\n\nK = 30 (\u00d71.5 n\u1ebfu gi\u1ea3i ch\u00ednh th\u1ee9c)\nHome advantage = +100 (kh\u00f4ng \u00e1p d\u1ee5ng s\u00e2n trung l\u1eadp)\nGD_mult: th\u1eafng c\u00e1ch bi\u1ec7t l\u1edbn \u2192 thay \u0111\u1ed5i Elo nhi\u1ec1u h\u01a1n',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina vs France',
+                example_body: 'Argentina Elo = <strong>2173</strong>, France Elo = <strong>2061</strong><br>elo_diff = 2173 - 2061 = <strong>+112</strong><br><br>\u0110\u1ed9i nh\u00e0 (Argentina) m\u1ea1nh h\u01a1n 112 \u0111i\u1ec3m Elo, t\u01b0\u01a1ng \u0111\u01b0\u01a1ng x\u00e1c su\u1ea5t th\u1eafng ~65% tr\u00ean s\u00e2n trung l\u1eadp.',
+                range: { min: '-1221', mean: '+18', max: '+1186' },
+                interpretation: 'D\u01b0\u01a1ng = \u0111\u1ed9i nh\u00e0 m\u1ea1nh h\u01a1n. |elo_diff| > 200 l\u00e0 ch\u00eanh l\u1ec7ch r\u1ea5t l\u1edbn.',
+            },
+            'rank_diff': {
+                name: 'FIFA Rank Difference',
+                group: 'FIFA Ranking',
+                groupColor: '#22d3ee',
+                source: 'Merge t\u1eeb data/raw/fifa_ranking-*.csv (Kaggle)',
+                description: 'Ch\u00eanh l\u1ec7ch th\u1ee9 h\u1ea1ng FIFA ch\u00ednh th\u1ee9c gi\u1eefa \u0111\u1ed9i kh\u00e1ch v\u00e0 \u0111\u1ed9i nh\u00e0. D\u00f9ng b\u1ea3ng x\u1ebfp h\u1ea1ng FIFA g\u1ea7n nh\u1ea5t tr\u01b0\u1edbc ng\u00e0y thi \u0111\u1ea5u (binary search). Chi\u1ebfm ~20% t\u1ea7m \u1ea3nh h\u01b0\u1edfng c\u1ee7a model.',
+                formula: 'rank_diff = rank_away - rank_home',
+                calculation: 'V\u1edbi m\u1ed7i tr\u1eadn, tra c\u1ee9u c\u1ed9t rank t\u1eeb file FIFA ranking CSV theo t\u00ean \u0111\u1ed9i (c\u00f3 mapping t\u00ean: USA\u2192United States, Korea Republic\u2192South Korea...) v\u00e0 ng\u00e0y rank_date g\u1ea7n nh\u1ea5t \u2264 ng\u00e0y tr\u1eadn \u0111\u1ea5u.',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina vs France',
+                example_body: 'Argentina h\u1ea1ng <strong>3</strong> FIFA, France h\u1ea1ng <strong>4</strong> FIFA<br>rank_diff = 4 - 3 = <strong>+1</strong><br><br>Ch\u1ec9 ch\u00eanh 1 b\u1eadc \u2014 g\u1ea7n ngang ng\u1eeda theo FIFA, nh\u01b0ng Elo cho th\u1ea5y kho\u1ea3ng c\u00e1ch l\u1edbn h\u01a1n (+112).',
+                range: { min: '-210', mean: '+3', max: '+209' },
+                interpretation: 'D\u01b0\u01a1ng = \u0111\u1ed9i nh\u00e0 x\u1ebfp h\u1ea1ng FIFA t\u1ed1t h\u01a1n (s\u1ed1 nh\u1ecf = h\u1ea1ng cao).',
+            },
+            'expected_goals_diff': {
+                name: 'Expected Goals Difference',
+                group: 'Poisson Model',
+                groupColor: '#4ade80',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv (rolling 30 tr\u1eadn)',
+                description: 'Ch\u00eanh l\u1ec7ch s\u1ed1 b\u00e0n th\u1eafng k\u1ef3 v\u1ecdng gi\u1eefa \u0111\u1ed9i nh\u00e0 v\u00e0 \u0111\u1ed9i kh\u00e1ch, d\u1ef1a tr\u00ean m\u00f4 h\u00ecnh Poisson. K\u1ebft h\u1ee3p s\u1ee9c t\u1ea5n c\u00f4ng \u0111\u1ed9i nh\u00e0 v\u1edbi s\u1ee9c ph\u00f2ng th\u1ee7 \u0111\u1ed9i kh\u00e1ch (v\u00e0 ng\u01b0\u1ee3c l\u1ea1i). Chi\u1ebfm ~11% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'expected_goals_diff = xG_home - xG_away\n\nxG_home = home_attack_str \u00d7 away_defense_str \u00d7 avg_goals\nxG_away = away_attack_str \u00d7 home_defense_str \u00d7 avg_goals',
+                calculation: 'attack_strength = avg_goals_scored_team (30 tr\u1eadn) / avg_goals_global (500 tr\u1eadn)\ndefense_strength = avg_goals_conceded_team (30 tr\u1eadn) / avg_goals_global\n\nN\u1ebfu attack > 1: t\u1ea5n c\u00f4ng m\u1ea1nh h\u01a1n trung b\u00ecnh gi\u1ea3i\nN\u1ebfu defense < 1: ph\u00f2ng th\u1ee7 t\u1ed1t h\u01a1n trung b\u00ecnh gi\u1ea3i',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina vs France',
+                example_body: 'Argentina: attack=<strong>1.65</strong>, defense=<strong>0.34</strong><br>France: attack=<strong>1.59</strong>, defense=<strong>0.65</strong><br>avg_goals \u2248 1.4<br><br>xG_home = 1.65 \u00d7 0.65 \u00d7 1.4 = <strong>1.37</strong><br>xG_away = 1.59 \u00d7 0.34 \u00d7 1.4 = <strong>0.69</strong><br>expected_goals_diff = 1.37 - 0.69 = <strong>+0.68</strong>',
+                range: { min: '-16.1', mean: '+0.09', max: '+17.2' },
+                interpretation: 'D\u01b0\u01a1ng = \u0111\u1ed9i nh\u00e0 \u0111\u01b0\u1ee3c k\u1ef3 v\u1ecdng ghi nhi\u1ec1u b\u00e0n h\u01a1n.',
+            },
+            'is_neutral': {
+                name: 'Neutral Venue',
+                group: 'Context',
+                groupColor: '#facc15',
+                source: 'L\u1ea5y tr\u1ef1c ti\u1ebfp t\u1eeb c\u1ed9t neutral trong data/raw/results.csv',
+                description: 'Tr\u1eadn \u0111\u1ea5u di\u1ec5n ra tr\u00ean s\u00e2n trung l\u1eadp hay kh\u00f4ng. Lo\u1ea1i b\u1ecf l\u1ee3i th\u1ebf s\u00e2n nh\u00e0 \u2014 r\u1ea5t quan tr\u1ecdng cho World Cup v\u00ec h\u1ea7u h\u1ebft tr\u1eadn \u0111\u1ea5u tr\u00ean s\u00e2n trung l\u1eadp. Chi\u1ebfm ~10% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'is_neutral = 1 n\u1ebfu s\u00e2n trung l\u1eadp, 0 n\u1ebfu s\u00e2n nh\u00e0',
+                calculation: 'Convert tr\u1ef1c ti\u1ebfp True/False \u2192 1/0 t\u1eeb file g\u1ed1c results.csv. Kh\u00f4ng c\u1ea7n t\u00ednh to\u00e1n ph\u1ee9c t\u1ea1p.',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina vs France',
+                example_body: 'Tr\u1eadn \u0111\u1ea5u t\u1ea1i Qatar \u2192 is_neutral = <strong>1</strong><br><br>World Cup 2026 t\u1ea1i USA/Mexico/Canada: h\u1ea7u h\u1ebft tr\u1eadn s\u1ebd l\u00e0 neutral=1, tr\u1eeb khi USA/Mexico/Canada \u0111\u00e1 s\u00e2n nh\u00e0.',
+                range: { min: '0', mean: '0.29', max: '1' },
+                interpretation: '1 = s\u00e2n trung l\u1eadp (kh\u00f4ng ai c\u00f3 l\u1ee3i th\u1ebf), 0 = \u0111\u1ed9i nh\u00e0 c\u00f3 l\u1ee3i th\u1ebf s\u00e2n nh\u00e0.',
+            },
+            'away_defense_strength': {
+                name: 'Away Defense Strength',
+                group: 'Poisson Model',
+                groupColor: '#4ade80',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv (rolling 30 tr\u1eadn)',
+                description: 'Ch\u1ec9 s\u1ed1 ph\u00f2ng th\u1ee7 c\u1ee7a \u0111\u1ed9i kh\u00e1ch so v\u1edbi trung b\u00ecnh gi\u1ea3i. < 1 ngh\u0129a l\u00e0 ph\u00f2ng th\u1ee7 t\u1ed1t h\u01a1n trung b\u00ecnh (b \u00edt l\u1ecdt l\u01b0\u1edbi h\u01a1n). Chi\u1ebfm ~5% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'away_defense_strength = avg_conceded_away_30 / avg_goals_global_500',
+                calculation: 'L\u1ea5y 30 tr\u1eadn g\u1ea7n nh\u1ea5t c\u1ee7a \u0111\u1ed9i kh\u00e1ch, t\u00ednh trung b\u00ecnh s\u1ed1 b\u00e0n thua m\u1ed7i tr\u1eadn, chia cho trung b\u00ecnh b\u00e0n th\u1eafng to\u00e0n c\u1ea7u (500 tr\u1eadn g\u1ea7n nh\u1ea5t).',
+                example_title: 'Chung k\u1ebft World Cup 2022: France',
+                example_body: 'France \u0111\u1ec3 l\u1ecdt l\u01b0\u1edbi TB <strong>0.91</strong> b\u00e0n/tr\u1eadn (30 tr\u1eadn g\u1ea7n nh\u1ea5t)<br>TB gi\u1ea3i \u2248 1.4 b\u00e0n/tr\u1eadn<br>away_defense_strength = 0.91 / 1.4 = <strong>0.65</strong><br><br>France ph\u00f2ng th\u1ee7 t\u1ed1t (ch\u1ec9 b\u1eb1ng 65% m\u1ee9c TB), nh\u01b0ng Argentina c\u00f2n t\u1ed1t h\u01a1n (0.34).',
+                range: { min: '0.16', mean: '1.03', max: '11.0' },
+                interpretation: '< 1 = ph\u00f2ng th\u1ee7 t\u1ed1t, > 1 = ph\u00f2ng th\u1ee7 y\u1ebfu, = 1 = trung b\u00ecnh.',
+            },
+            'home_attack_strength': {
+                name: 'Home Attack Strength',
+                group: 'Poisson Model',
+                groupColor: '#4ade80',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv (rolling 30 tr\u1eadn)',
+                description: 'Ch\u1ec9 s\u1ed1 t\u1ea5n c\u00f4ng c\u1ee7a \u0111\u1ed9i nh\u00e0 so v\u1edbi trung b\u00ecnh gi\u1ea3i. > 1 ngh\u0129a l\u00e0 ghi b\u00e0n nhi\u1ec1u h\u01a1n trung b\u00ecnh. Chi\u1ebfm ~4% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'home_attack_strength = avg_scored_home_30 / avg_goals_global_500',
+                calculation: 'L\u1ea5y 30 tr\u1eadn g\u1ea7n nh\u1ea5t c\u1ee7a \u0111\u1ed9i nh\u00e0, t\u00ednh trung b\u00ecnh s\u1ed1 b\u00e0n ghi \u0111\u01b0\u1ee3c m\u1ed7i tr\u1eadn, chia cho trung b\u00ecnh b\u00e0n th\u1eafng to\u00e0n c\u1ea7u (500 tr\u1eadn g\u1ea7n nh\u1ea5t).',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina',
+                example_body: 'Argentina ghi TB <strong>2.3</strong> b\u00e0n/tr\u1eadn (30 tr\u1eadn g\u1ea7n nh\u1ea5t)<br>TB gi\u1ea3i \u2248 1.4 b\u00e0n/tr\u1eadn<br>home_attack_strength = 2.3 / 1.4 = <strong>1.65</strong><br><br>Argentina t\u1ea5n c\u00f4ng m\u1ea1nh h\u01a1n trung b\u00ecnh gi\u1ea3i 65%.',
+                range: { min: '0', mean: '1.02', max: '4.60' },
+                interpretation: '> 1 = t\u1ea5n c\u00f4ng m\u1ea1nh, < 1 = t\u1ea5n c\u00f4ng y\u1ebfu, = 1 = trung b\u00ecnh.',
+            },
+            'home_form': {
+                name: 'Home Form',
+                group: 'Form (5 tr\u1eadn)',
+                groupColor: '#fb923c',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv (rolling 5 tr\u1eadn)',
+                description: 'Phong \u0111\u1ed9 g\u1ea7n \u0111\u00e2y c\u1ee7a \u0111\u1ed9i nh\u00e0 trong 5 tr\u1eadn g\u1ea7n nh\u1ea5t. Ph\u1ea3n \u00e1nh momentum hi\u1ec7n t\u1ea1i. Chi\u1ebfm ~3% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'home_form = mean(points_last_5) / 3\n\nTh\u1eafng = 3, H\u00f2a = 1, Thua = 0',
+                calculation: 'L\u1ea5y 5 tr\u1eadn g\u1ea7n nh\u1ea5t c\u1ee7a \u0111\u1ed9i nh\u00e0 (b\u1ea5t k\u1ec3 gi\u1ea3i n\u00e0o), t\u00ednh \u0111i\u1ec3m trung b\u00ecnh r\u1ed3i chia 3 \u0111\u1ec3 normalize v\u1ec1 kho\u1ea3ng [0, 1].',
+                example_title: 'Chung k\u1ebft World Cup 2022: Argentina',
+                example_body: 'Argentina 5 tr\u1eadn g\u1ea7n nh\u1ea5t: 4 th\u1eafng + 1 h\u00f2a<br>\u0110i\u1ec3m = (3+3+3+3+1) / 5 = 2.6<br>home_form = 2.6 / 3 = <strong>0.867</strong><br><br>G\u1ea7n nh\u01b0 \u0111\u1ec9nh cao phong \u0111\u1ed9 (max = 1.0 = th\u1eafng c\u1ea3 5 tr\u1eadn).',
+                range: { min: '0', mean: '0.47', max: '1.0' },
+                interpretation: '1.0 = th\u1eafng c\u1ea3 5, 0.5 = phong \u0111\u1ed9 trung b\u00ecnh, 0 = thua c\u1ea3 5.',
+            },
+            'away_form': {
+                name: 'Away Form',
+                group: 'Form (5 tr\u1eadn)',
+                groupColor: '#fb923c',
+                source: 'T\u1ef1 t\u00ednh t\u1eeb data/raw/results.csv (rolling 5 tr\u1eadn)',
+                description: 'Phong \u0111\u1ed9 g\u1ea7n \u0111\u00e2y c\u1ee7a \u0111\u1ed9i kh\u00e1ch trong 5 tr\u1eadn g\u1ea7n nh\u1ea5t. T\u01b0\u01a1ng t\u1ef1 home_form nh\u01b0ng cho \u0111\u1ed9i kh\u00e1ch. Chi\u1ebfm ~3% t\u1ea7m \u1ea3nh h\u01b0\u1edfng.',
+                formula: 'away_form = mean(points_last_5) / 3\n\nTh\u1eafng = 3, H\u00f2a = 1, Thua = 0',
+                calculation: 'L\u1ea5y 5 tr\u1eadn g\u1ea7n nh\u1ea5t c\u1ee7a \u0111\u1ed9i kh\u00e1ch, t\u00ednh \u0111i\u1ec3m TB r\u1ed3i chia 3.',
+                example_title: 'Chung k\u1ebft World Cup 2022: France',
+                example_body: 'France 5 tr\u1eadn g\u1ea7n nh\u1ea5t: 4 th\u1eafng + 1 thua<br>\u0110i\u1ec3m = (3+3+3+3+0) / 5 = 2.4<br>away_form = 2.4 / 3 = <strong>0.80</strong><br><br>Phong \u0111\u1ed9 t\u1ed1t nh\u01b0ng h\u01a1i k\u00e9m Argentina (0.87).',
+                range: { min: '0', mean: '0.46', max: '1.0' },
+                interpretation: '1.0 = th\u1eafng c\u1ea3 5, 0.5 = trung b\u00ecnh, 0 = thua c\u1ea3 5.',
+            },
+        };
+
+        function openFeatureModal(featureKey) {
+            const feat = FEATURE_EXPLANATIONS[featureKey];
+            if (!feat) return;
+
+            const html = `
+                <div class="modal-badge" style="background:${feat.groupColor}22;color:${feat.groupColor}">${feat.group}</div>
+                <h2>${feat.name}</h2>
+                <div class="modal-importance">${feat.description}</div>
+
+                <div class="modal-section">
+                    <h3>Ngu\u1ed3n d\u1eef li\u1ec7u</h3>
+                    <p>${feat.source}</p>
+                </div>
+
+                <div class="modal-section">
+                    <h3>C\u00f4ng th\u1ee9c</h3>
+                    <div class="modal-formula">${feat.formula.replace(/\n/g, '<br>')}</div>
+                </div>
+
+                <div class="modal-section">
+                    <h3>C\u00e1ch t\u00ednh chi ti\u1ebft</h3>
+                    <p>${feat.calculation.replace(/\n/g, '<br>')}</p>
+                </div>
+
+                <div class="modal-section">
+                    <div class="modal-example">
+                        <div class="ex-title">${feat.example_title}</div>
+                        <div class="ex-body">${feat.example_body}</div>
+                    </div>
+                </div>
+
+                <div class="modal-section">
+                    <h3>Ph\u00e2n ph\u1ed1i trong dataset</h3>
+                    <div class="modal-range">
+                        <div class="range-item"><span class="range-label">Min: </span><span class="range-value">${feat.range.min}</span></div>
+                        <div class="range-item"><span class="range-label">Mean: </span><span class="range-value">${feat.range.mean}</span></div>
+                        <div class="range-item"><span class="range-label">Max: </span><span class="range-value">${feat.range.max}</span></div>
+                    </div>
+                </div>
+
+                <div class="modal-section">
+                    <h3>C\u00e1ch \u0111\u1ecdc</h3>
+                    <p>${feat.interpretation}</p>
+                </div>
+            `;
+
+            document.getElementById('modal-content').innerHTML = html;
+            document.getElementById('feature-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('feature-modal').classList.remove('active');
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // ---- Load all data ----
+        async function loadDashboard() {
+            const [metrics, fi, cm, dist, calib, stats] = await Promise.all([
+                fetch('/api/model-metrics').then(r => r.json()),
+                fetch('/api/feature-importance').then(r => r.json()),
+                fetch('/api/confusion-matrix').then(r => r.json()),
+                fetch('/api/result-distribution').then(r => r.json()),
+                fetch('/api/probability-calibration').then(r => r.json()),
+                fetch('/api/overall-stats').then(r => r.json()),
+            ]);
+
+            renderStatCards(stats, metrics);
+            renderFeatureImportance(fi);
+            renderConfusionMatrix(cm);
+            renderDistribution(dist);
+            renderCalibration(calib);
+            renderParams(stats);
+        }
+
+        // ---- Stat Cards ----
+        function renderStatCards(stats, metrics) {
+            const cards = [
+                { value: stats.total_matches.toLocaleString(), label: 'Total Matches', cls: '' },
+                { value: (metrics.test_accuracy * 100).toFixed(1) + '%', label: 'Test Accuracy', cls: 'green' },
+                { value: metrics.test_f1_macro.toFixed(3), label: 'F1 Macro', cls: 'yellow' },
+                { value: metrics.test_log_loss.toFixed(3), label: 'Log Loss', cls: 'purple' },
+            ];
+            document.getElementById('stat-cards').innerHTML = cards.map(c => `
+                <div class="stat-card">
+                    <div class="stat-value ${c.cls}">${c.value}</div>
+                    <div class="stat-label">${c.label}</div>
+                </div>
+            `).join('');
+        }
+
+        // ---- Feature Importance ----
+        function renderFeatureImportance(fi) {
+            const barColors = [
+                COLORS.blue, COLORS.cyan, COLORS.green, COLORS.yellow,
+                COLORS.orange, COLORS.pink, COLORS.purple, COLORS.red,
+            ];
+            const canvas = document.getElementById('featureChart');
+            const chart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: fi.labels,
+                    datasets: [{
+                        data: fi.values,
+                        backgroundColor: barColors.slice(0, fi.labels.length),
+                        hoverBackgroundColor: barColors.slice(0, fi.labels.length).map(c => c + 'cc'),
+                        borderRadius: 6,
+                    }],
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.raw.toFixed(1)}% — Click for details`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8', callback: v => v + '%' },
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#e2e8f0', font: { size: 12 } },
+                        },
+                    },
+                    onHover: (event, elements) => {
+                        canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    },
+                },
+            });
+
+            // Click handler: open modal with feature explanation
+            canvas.addEventListener('click', (evt) => {
+                const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
+                if (points.length > 0) {
+                    const idx = points[0].index;
+                    const featureKey = fi.labels[idx];
+                    openFeatureModal(featureKey);
+                }
+            });
+        }
+
+        // ---- Confusion Matrix ----
+        function renderConfusionMatrix(cm) {
+            const labels = cm.labels;
+            const matrix = cm.matrix;
+            const maxVal = Math.max(...matrix.flat());
+
+            let html = '<table class="cm-table">';
+            html += '<tr><th></th><th colspan="3" style="color:#38bdf8">Predicted</th></tr>';
+            html += `<tr><th></th>${labels.map(l => `<th>${l}</th>`).join('')}</tr>`;
+
+            for (let i = 0; i < 3; i++) {
+                html += `<tr><th style="text-align:right;padding-right:1rem;">${labels[i]}</th>`;
+                for (let j = 0; j < 3; j++) {
+                    const val = matrix[i][j];
+                    const intensity = val / maxVal;
+                    const bg = i === j
+                        ? `rgba(74, 222, 128, ${0.15 + intensity * 0.6})`
+                        : `rgba(248, 113, 113, ${0.05 + intensity * 0.4})`;
+                    html += `<td class="cm-cell" style="background:${bg}">${val}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</table>';
+
+            // Add accuracy per class
+            html += '<div style="margin-top:1rem;font-size:0.8rem;color:#94a3b8;">';
+            for (let i = 0; i < 3; i++) {
+                const total = matrix[i].reduce((a, b) => a + b, 0);
+                const correct = matrix[i][i];
+                const acc = total > 0 ? (correct / total * 100).toFixed(1) : 0;
+                html += `<span style="margin-right:1.5rem;">${labels[i]}: <strong style="color:#e2e8f0">${acc}%</strong> (${correct}/${total})</span>`;
+            }
+            html += '</div>';
+
+            document.getElementById('confusion-matrix').innerHTML = html;
+        }
+
+        // ---- Result Distribution ----
+        function renderDistribution(dist) {
+            new Chart(document.getElementById('distChart'), {
+                type: 'bar',
+                data: {
+                    labels: dist.labels,
+                    datasets: [
+                        {
+                            label: 'Actual',
+                            data: dist.actual,
+                            backgroundColor: 'rgba(56, 189, 248, 0.7)',
+                            borderRadius: 6,
+                        },
+                        {
+                            label: 'Predicted',
+                            data: dist.predicted,
+                            backgroundColor: 'rgba(251, 146, 60, 0.7)',
+                            borderRadius: 6,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                    },
+                },
+            });
+        }
+
+        // ---- Calibration ----
+        function renderCalibration(calib) {
+            new Chart(document.getElementById('calibChart'), {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Model',
+                            data: calib.predicted.map((p, i) => ({ x: p, y: calib.actual[i] })),
+                            backgroundColor: COLORS.blue,
+                            pointRadius: calib.counts.map(c => Math.max(4, Math.min(15, c / 10))),
+                        },
+                        {
+                            label: 'Perfect Calibration',
+                            data: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+                            type: 'line',
+                            borderColor: COLORS.slate,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            borderWidth: 1,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    if (ctx.datasetIndex === 0) {
+                                        const i = ctx.dataIndex;
+                                        return `Predicted: ${(calib.predicted[i]*100).toFixed(0)}%, Actual: ${(calib.actual[i]*100).toFixed(0)}%, n=${calib.counts[i]}`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Predicted Probability', color: '#94a3b8' },
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8', callback: v => (v*100)+'%' },
+                            min: 0, max: 1,
+                        },
+                        y: {
+                            title: { display: true, text: 'Actual Win Rate', color: '#94a3b8' },
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8', callback: v => (v*100)+'%' },
+                            min: 0, max: 1,
+                        },
+                    },
+                },
+            });
+        }
+
+        // ---- Model Params ----
+        function renderParams(stats) {
+            const params = stats.best_params;
+            const rows = [
+                ['Algorithm', 'XGBoost (multi:softprob)'],
+                ['Train Matches', stats.train_matches.toLocaleString()],
+                ['Test Matches', stats.test_matches.toLocaleString()],
+                ['Features', stats.features_count],
+                ...Object.entries(params).map(([k, v]) => [k, v]),
+            ];
+            document.getElementById('params-table').innerHTML = rows.map(
+                ([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`
+            ).join('');
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
